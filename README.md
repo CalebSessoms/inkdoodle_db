@@ -5,7 +5,7 @@ Where the main Ink-Doodle app focuses on **creative writing and worldbuilding**,
 
 ---
 
-## 🧩 Current Purpose
+## Current Purpose
 
 At this stage, the system is a **foundational database** intended to:
 - Provide a clean, normalized backend schema.
@@ -18,7 +18,7 @@ You can create, read, update, and delete every major entity through Python CLI s
 
 ---
 
-## 🧠 Future Complexity — Lore & Relationship Model
+## Future Complexity — Lore & Relationship Model
 
 Ink-Doodle’s long-term vision involves an **interconnected “lore web”**, where characters, locations, events, and items will each form graph-like relationships.  
 That system will require a **hybrid model** combining relational and non-relational design:
@@ -32,7 +32,7 @@ It will also track **version control of lore data**, so writers can branch, merg
 
 ---
 
-## ⚙️ Setup
+## Setup
 
 **Requirements**
 - Python 3.10+
