@@ -1,37 +1,55 @@
-# InkDoodle DB (backend-only)
+# InkDoodle Database (Backend Companion)
 
-This repository contains the **database management scripts** for the InkDoodle project.
-The **InkDoodle app** will remain app-focused; all **database access, creation, updates,
-and maintenance** are performed here via Python CLI scripts (PowerShell-friendly).
+This repository serves as the **database and backend utility layer** for the [Ink-Doodle App](https://github.com/CalebSessoms/ink-doodle) project.  
+Where the main Ink-Doodle app focuses on **creative writing and worldbuilding**, this project manages the **structured data** — creators, projects, chapters, notes, and references — using a PostgreSQL database (currently hosted via **Neon**).
 
-## What’s here
+---
 
-* **inkdb/** – small Python package with the Neon Postgres connection helper
-* **cli/** – command-line scripts (create/list/update/delete)
-* `.env` (ignored): contains the Neon `DATABASE_URL` with SSL
+## 🧩 Current Purpose
 
-## Technology
+At this stage, the system is a **foundational database** intended to:
+- Provide a clean, normalized backend schema.
+- Allow CLI-based management of creators, projects, chapters, notes, and references.
+- Serve as a **stand-alone testbed** for Ink-Doodle’s future data layer.
 
-* Postgres (hosted on **Neon**, free tier)
-* Python 3.14, `pg8000`, `python-dotenv`
+You can create, read, update, and delete every major entity through Python CLI scripts found under the `cli/` directory.
 
-## Usage (from repo root)
+> **Note:** This database is intentionally kept simple for now — relational depth, version history, and multi-link entity structures will come later once the Ink-Doodle app evolves beyond local storage.
 
-1. Create a `.env` file in this folder with:
+---
 
-   ```
-   DATABASE_URL=postgresql://<user>:<pass>@<host>/<db>?sslmode=require&channel_binding=require
-   ```
+## 🧠 Future Complexity — Lore & Relationship Model
 
-2. Run any script, e.g.:
+Ink-Doodle’s long-term vision involves an **interconnected “lore web”**, where characters, locations, events, and items will each form graph-like relationships.  
+That system will require a **hybrid model** combining relational and non-relational design:
 
-   ```powershell
-   python .\cli\list_works.py
-   python .\cli\create_work.py
-   python .\cli\add_chapter.py
-   python .\cli\add_note.py
-   python .\cli\add_ref.py
-   ```
+- **Relational layer** (PostgreSQL): structured data (chapters, timelines, creators, projects, revisions).  
+- **Graph/relationship layer** (likely Neo4j or pgvector): dynamic entity-to-entity connections (who met who, where, when, how).  
+- **Caching / indexing layer** (SQLite or Redis): local performance layer for the desktop Ink-Doodle app.
 
-> Note: Direct DB access is **not** exposed to app users or creators. This repo is the
-> canonical place where DB schema and data are managed.
+This repo will eventually manage **entity mapping, multi-table joins**, and the **link metadata** that allows one note or reference to connect to multiple other entries dynamically.  
+It will also track **version control of lore data**, so writers can branch, merge, or roll back portions of their universe history.
+
+---
+
+## ⚙️ Setup
+
+**Requirements**
+- Python 3.10+
+- PostgreSQL connection (Neon used here)
+- `python-dotenv`, `pg8000`, `psycopg2-binary` (installed via `requirements.txt`)
+
+**Steps**
+```bash
+# clone and set up environment
+git clone https://github.com/CalebSessoms/inkdoodle_db.git
+cd inkdoodle_db
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt
+
+# add Neon or local connection string
+echo "DATABASE_URL=postgresql+pg8000://user:password@host/dbname?sslmode=require" > .env
+
+# build or reset schema
+python .\scripts\reset_db.py
