@@ -208,6 +208,7 @@ SELECT id, code, project_id, number, title FROM chapters ORDER BY project_id, nu
 Caleb Sessoms  
 Database companion for the Ink-Doodle project  
 GitHub: [https://github.com/CalebSessoms/inkdoodle_db](https://github.com/CalebSessoms/inkdoodle_db)
+For access/connection to the db or other requests please feel free to reach out to me at calebsessome@outlook.com
 
 ---
 
