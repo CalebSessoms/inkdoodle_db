@@ -12,9 +12,95 @@ At this stage, the system is a **foundational database** intended to:
 - Allow CLI-based management of creators, projects, chapters, notes, and references.
 - Serve as a **stand-alone testbed** for Ink-Doodle’s future data layer.
 
-You can create, read, update, and delete every major entity through Python CLI scripts found under the `cli/` directory.
+**What’s already wired in Postgres**
+- **Code generators & triggers** for public `code` fields (e.g., `PRJ-0001-000123`).
+- **`updated_at` auto-update triggers** on row change.
+- Helpful **indexes** (e.g., `(project_id)`, `(project_id, number)`).
+- **`prefs`** table for app prefs (JSONB).
 
-> **Note:** This database is intentionally kept simple for now — relational depth, version history, and multi-link entity structures will come later once the Ink-Doodle app evolves beyond local storage.
+---
+
+## Current App Integration Status
+
+The **Ink-Doodle desktop app** (Electron) is beginning to use this DB via IPC from its main process.
+
+**Live endpoints used by the app right now:**
+- `db:ping` — connectivity + server version (debug only).
+- `prefs:getWorkspacePath` — reads `prefs.workspace_root` (`value->>'path'`).
+- `prefs:setWorkspacePath` — upserts JSON `{ "path": "<abs path>" }` into `prefs(key='workspace_root')`.
+- `prefs:set` / `prefs:get` for `ui_prefs` — stores current appearance settings (`mode`, `theme`, `bg`, `bgOpacity`, `bgBlur`, `editorDim`).
+
+**Next planned IPC handlers (already specced):**
+- `projects:*`, `chapters:*`, `notes:*`, `refs:*` (list/create/update/delete)
+
+This README tracks the DB-side shape expected by those IPC calls.
+
+---
+
+## Schema Overview (App-Used Columns)
+
+**creators**  
+`id (PK)`, `email (unique, not null)`, `password_hash (not null)`, `display_name (not null)`,  
+`is_active (bool default true)`, `created_at`, `updated_at`
+
+**projects**  
+`id (PK)`, `code (TEXT unique, auto via trigger)`, `title (not null)`, `creator_id (FK not null)`,  
+`created_at`, `updated_at`  
+Indexes: `(creator_id)`
+
+**chapters**  
+`id (PK)`, `code (unique, auto)`, `project_id (FK not null)`, `creator_id (FK not null)`,  
+`number (int)`, `title (not null)`, `content (text)`, `status (text)`, `summary (text)`, `tags (text[])`,  
+`created_at`, `updated_at`  
+Indexes: `(project_id)`, `(creator_id)`, `(project_id, number)`
+
+**notes**  
+`id (PK)`, `code (unique, auto)`, `project_id (FK not null)`, `creator_id (FK not null)`,  
+`number (int)`, `title (not null)`, `content (text)`, `tags (text[])`, `category (text)`,  
+`pinned (bool default false)`, `created_at`, `updated_at`
+
+**refs**  
+`id (PK)`, `code (unique, auto)`, `project_id (FK not null)`, `creator_id (FK not null)`,  
+`number (int)`, `title (not null)`, `tags (text[])`, `type (text)`, `summary (text)`,  
+`link (text)`, `content (text)`, `created_at`, `updated_at`
+
+**prefs** (app-level key/value store)  
+`key (PK text)`, `value (jsonb)`, `updated_at (timestamp default now)`
+
+**Code generation components**  
+- Table: `id_counters (creator_id, entity, next_no)`  
+- Function: `next_entity_code(entity, creator_id)` → yields `PRJ-<creator 4d>-<serial 6d>` (and `CHP-`, `NT-`, `RF-` accordingly)  
+- Triggers: set `code` on insert; update `updated_at` on changes.
+
+---
+
+## IPC-to-SQL Reference (for App Developers)
+
+**prefs:getWorkspacePath**
+```sql
+SELECT value->>'path' AS path
+FROM prefs
+WHERE key = 'workspace_root'
+LIMIT 1;
+```
+
+**prefs:setWorkspacePath**
+```sql
+INSERT INTO prefs(key, value)
+VALUES ('workspace_root', jsonb_build_object('path', $1))
+ON CONFLICT (key)
+DO UPDATE SET value = EXCLUDED.value, updated_at = now();
+```
+
+**prefs:set (ui_prefs)**
+```sql
+INSERT INTO prefs(key, value)
+VALUES ('ui_prefs', $1::jsonb)
+ON CONFLICT (key)
+DO UPDATE SET value = EXCLUDED.value, updated_at = now();
+```
+
+*Project/entry endpoints (planned)* map to straight-forward `SELECT/INSERT/UPDATE/DELETE` on `projects`, `chapters`, `notes`, `refs`, with `code` set by triggers and `updated_at` managed automatically.
 
 ---
 
@@ -64,45 +150,13 @@ It will also track **version control of lore data**, so writers can branch, merg
 
 ---
 
-### Step 1: Local Sync Groundwork (brief)
+## Troubleshooting
 
-**Why:** prepares the desktop app to sync later without redesigning the data model.
-
-**App-side additions (saved in the project JSON):**
-- Per entry: `rev` (monotonic integer), `deleted_at` (ISO string or `null`).
-- Project-level `sync` block:
-  ```json
-  {
-    "sync": {
-      "device_id": "dev_xxx",
-      "last_sync_at": null,
-      "queue": []
-    }
-  }
-Change queue items (example shape):
-
-json
-Copy code
-{
-  "id": "uuid",
-  "ts": "2025-10-13T15:40:00Z",
-  "op": "create|update|delete",
-  "entity": "chapter|note|reference",
-  "local_id": "entry-local-id",
-  "rev": 4,
-  "payload": { "title": "New title" }
-}
-Semantics:
-
-create: set rev = 1, enqueue minimal payload.
-
-update: increment rev, enqueue only changed fields (or full object if simpler to start).
-
-delete: increment rev, set deleted_at, enqueue a delete op.
-
-Persist the queue inside the project file so it survives restarts.
-
-Step 2 will introduce the API (/bundle, /sync) that consumes these queue items and returns authoritative deltas sourced from this Postgres schema.
+- **SSL required (Neon):** ensure your `DATABASE_URL` includes `?sslmode=require`.  
+- **Driver choice:** repo supports `pg8000` (pure Python) and `psycopg2-binary`; either works.  
+- **Resetting schema:** `python .\scripts\reset_db.py` will (re)create tables, triggers, and counters.  
+- **Codes not appearing:** make sure triggers are installed; re-run the reset script.  
+- **Cannot connect:** test with `python .\test_connection.py` and verify env is loaded.
 
 ---
 
@@ -127,3 +181,35 @@ echo "DATABASE_URL=postgresql+pg8000://user:password@host/dbname?sslmode=require
 
 # build or reset schema
 python .\scripts\reset_db.py
+
+# (optional) show current schema summary
+python .\scripts\show_schema.py
+
+# (optional) basic connection test
+python .\test_connection.py
+```
+
+**Quick psql checks (optional)**
+```sql
+-- prefs workspace root
+SELECT value->>'path' AS path FROM prefs WHERE key='workspace_root';
+
+-- ui_prefs blob (renderer writes this)
+SELECT value FROM prefs WHERE key='ui_prefs';
+
+-- sample projects/chapter view
+SELECT id, code, title FROM projects ORDER BY id LIMIT 10;
+SELECT id, code, project_id, number, title FROM chapters ORDER BY project_id, number NULLS LAST, id LIMIT 10;
+```
+
+---
+
+## Author
+Caleb Sessoms  
+Database companion for the Ink-Doodle project  
+GitHub: [https://github.com/CalebSessoms/inkdoodle_db](https://github.com/CalebSessoms/inkdoodle_db)
+
+---
+
+✅ *Status:* Database connected to live Electron app (prefs & ping verified)  
+🔧 *Next:* Add project/entry synchronization IPCs and local queue integration.
