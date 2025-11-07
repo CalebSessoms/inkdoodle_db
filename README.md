@@ -3,7 +3,7 @@
 This repository holds the PostgreSQL schema, trigger/functions, and backend utilities that power the Ink‑Doodle desktop app's data model. It is both a standalone toolset for managing creators/projects/entries and the authoritative reference for the Electron app's IPC→SQL contract.
 
 Short version:
-- The DB contains creators, projects, chapters, notes, refs, and a small `prefs` store (JSONB).
+- The DB contains creators, projects, chapters, notes, refs, lore, and a small `prefs` store (JSONB).
 - The desktop app talks to the DB via IPC handlers in `src/main/*` (main process). The integration is currently "local-first":
   - Local JSON files are authoritative on the desktop. The app only writes to the remote DB when an explicit uploader runs (logout/upload or manual triggers).
   - Automatic DB→local imports are disabled by default; imports are handled explicitly via `db.load.fullLoad()` if desired.
@@ -35,9 +35,15 @@ The Electron app uses a thin IPC bridge implemented in the desktop repository. T
 - `auth:login` — login by email (returns `ok` and schedules a background `fullLoad()` to optionally create local project files).
 - `auth:logout` — performs local->DB upload (uploader) and clears local project/workspace files; the app now also calls this automatically on quit when a user is logged in.
 
+- Backend helpers (TypeScript/main): recent updates added basic lore support into the main-process helpers used by IPC flows:
+  - `src/main/db.query.ts` exposes a `getProjectLore(projectCode)` helper to fetch lore rows for a given project.
+  - `src/main/db.format.ts` includes local lore field constants and logic to map DB payloads into local on-disk lore shapes used by the renderer/uploader.
+  - `src/main/db.load.ts` was extended to write per-item `lore/` JSON files during `fullLoad()` so DB→local imports emit canonical per-item lore files.
+  - Per-field debug logging was added to assist tracing missing or mismatched lore fields across DB→local→renderer flows.
+
 Notes on behavior and safety:
 - DB→local automatic writes are intentionally disabled to keep the user's local files safe. `fullLoad()` exists as an explicit operation that will create local project folders when invoked (and is used at login only when desired).
-- The uploader is implemented in `src/main/db.upload.ts`. It reads local projects, upserts project rows, streams child rows (chapters/notes/refs) using mutating iterators (getNextChapter/getNextNote/getNextRef), and performs a verification pass to compare local vs DB counts.
+- The uploader is implemented in `src/main/db.upload.ts`. It reads local projects, upserts project rows, streams child rows (chapters/notes/refs,lore) using mutating iterators (getNextChapter/getNextNote/getNextRef/getNextLore), and performs a verification pass to compare local vs DB counts. Lore upload support and mapping conventions were added to the uploader and format helpers; runtime verification in some environments is pending due to ESM/module resolution issues encountered during dry-runs.
 - `performLogout()` (exposed by the main IPC module) is invoked during `auth:logout` and by the main process before quit to ensure users are logged out and local files cleaned up.
 
 ---
@@ -51,6 +57,7 @@ The production schema used by the app includes the following tables (high level)
 - `chapters` — id, code, project_id, creator_id, number, title, content, status, summary, tags, created_at, updated_at
 - `notes` — id, code, project_id, creator_id, number, title, content, tags, category, pinned, created_at, updated_at
 - `refs` — id, code, project_id, creator_id, number, title, tags, type, summary, link, content, created_at, updated_at
+- `lore` — id, code, project_id, creator_id, number, title, content, summary, tags, lore_kind, entry1name, entry1content, entry2name, entry2content, entry3name, entry3content, entry4name, entry4content, created_at, updated_at
 - `prefs` — key (PK), value (jsonb), updated_at
 
 There are helper objects/functions for generating stable public `code` values and for maintaining `updated_at` timestamps via triggers.
@@ -118,7 +125,7 @@ If you want the desktop app to talk to your local DB instances, set the same `DA
 - Use `python .\scripts\show_schema.py` to inspect the installed schema.
 
 Runtime integration notes (desktop app):
-- The desktop app writes a global debug log (workspace debug.log) which is invaluable when troubleshooting upload/save/load flows. Watch for `auth:login`, `db.load:fullLoad`, `db.upload` and `performLogout` messages.
+- The desktop app writes a global debug log (workspace debug.log) which is invaluable when troubleshooting upload/save/load flows. Watch for `auth:login`, `db.load:fullLoad`, `db.format:translateDbToLocal` (per-field logs for lore mapping), `db.upload`, and `performLogout` messages.
 - The uploader performs verification checks (local vs DB counts) and emits `conflicts` in the summary; use that to detect silent mismatches.
 
 ---
