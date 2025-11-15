@@ -138,6 +138,7 @@ Runtime integration notes (desktop app):
 4. Hooking up the db for lore elements
 5. Adding in links between different lore elements. Links are going to be limitless, cascading, and double sided. eg there are going to be no limits for number of links, deleting a linked element will removing any links other elements had with it, and links are two sided linking x with y will also link y with x.
 6. Adding a visualization of these lore/world building elements. Would consist of a relationship web with drag drop editting. Editting the elements and their respective links could theoretically happen in this new view mod. Possibility of a slider so it would act like a timeline for characters, worlds, etc etc possibly tied to chapters. eg move the slider to chapter one oh these characcters are the ones present move the slider to chapter 5 oh this character has died these other characters have gotten married and so are linked etc etc. Honestly so many features that could be implemented might remain a ongoing project for some time to come.
+7. Timeline visualization save/load to database integration. The timeline system currently saves local JSON files (`timeline.json`) and will be extended to support database persistence for cross-device synchronization and backup.
 
 ---
 
